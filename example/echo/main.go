@@ -1,0 +1,43 @@
+package main
+
+import (
+	"context"
+	"os"
+
+	"cpn"
+	"cpn/place"
+	"cpn/place/http"
+	"cpn/place/io"
+)
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	n := cpn.NewPN()
+	n.P("req",
+		cpn.WithContext(ctx),
+		cpn.WithStrategyBuilder(http.NewRequest,
+			http.AddressOption("127.0.0.1:8080"),
+			http.PatternOption("/"),
+			place.CancelOption(cancel),
+		),
+	)
+	n.T("echo",
+		cpn.WithTransformation(http.Processor(func(ctx *http.RequestContext) {
+			_ = ctx.Request().Write(ctx.Response())
+		})),
+	)
+	n.P("res",
+		cpn.WithContext(context.Background()),
+		cpn.WithStrategy(http.NewResponse()),
+	)
+	n.P("log",
+		cpn.WithContext(context.Background()),
+		cpn.WithStrategy(io.NewWriter(io.WriterOption(os.Stdout))),
+	)
+	n.
+		PT("req", "echo").
+		TP("echo", "log").
+		TP("echo", "res").
+		Run()
+	<-ctx.Done()
+}
